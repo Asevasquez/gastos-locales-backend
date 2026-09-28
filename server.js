@@ -29,5 +29,20 @@ app.use('/api/gastos', gastosRoutes);
 
 app.get('/', (req, res) => res.send('API Gastos de Locales OK'));
 
+// Red de seguridad: si alguna ruta lanza un error sin capturarlo, esto responde
+// 500 en vez de dejar que Express reviente sin contestar nada.
+app.use((err, req, res, next) => {
+  console.error('Error no manejado:', err);
+  res.status(500).json({ error: 'Error interno del servidor' });
+});
+
+// Desde Node 15+, una promesa rechazada sin capturar tumba el proceso completo
+// por defecto — eso hace que Dockploy reinicie el contenedor y el proxy devuelva
+// 502 mientras tanto. Mejor loguearlo y seguir vivo; el try/catch de cada ruta
+// ya debería evitar que esto se dispare, esto es la última red de contención.
+process.on('unhandledRejection', (reason) => {
+  console.error('Promesa rechazada sin capturar:', reason);
+});
+
 const PORT = process.env.PORT || 5001;
 app.listen(PORT, () => console.log(`Servidor corriendo en puerto ${PORT}`));
