@@ -209,4 +209,24 @@ router.put('/:id', checkRol('MASTER', 'ADMINISTRADOR'), async (req, res) => {
   res.json(gasto);
 });
 
+// DELETE /api/gastos/:id — solo MASTER. Borra también el archivo de la foto en
+// disco (si existe); si falla al borrarlo (ya no está, permisos, etc.) igual
+// borra el registro del gasto, solo queda un warning en el log.
+router.delete('/:id', checkRol('MASTER'), async (req, res) => {
+  const gasto = await Gasto.findByIdAndDelete(req.params.id);
+  if (!gasto) return res.status(404).json({ error: 'Gasto no encontrado' });
+
+  if (gasto.fotoBoletaUrl) {
+    const nombreArchivo = gasto.fotoBoletaUrl.split('/').pop();
+    const rutaArchivo = path.join(uploadsDir, nombreArchivo);
+    fs.unlink(rutaArchivo, (err) => {
+      if (err && err.code !== 'ENOENT') {
+        console.error(`No se pudo borrar la foto del gasto ${gasto._id}:`, err.message);
+      }
+    });
+  }
+
+  res.json({ ok: true });
+});
+
 module.exports = router;
