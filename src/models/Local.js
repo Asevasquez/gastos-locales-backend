@@ -5,7 +5,7 @@ const localSchema = new mongoose.Schema(
     nombre: { type: String, required: true, trim: true },
     marca: {
       type: String,
-      enum: ['KAMI_SUSHI', 'LATIN_PIZZA', 'KELVER'],
+      enum: ['KAMI_SUSHI', 'LATIN_PIZZA'],
       required: true
     },
     direccion: { type: String, trim: true },
