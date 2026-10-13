@@ -130,7 +130,7 @@ router.get('/', async (req, res) => {
   if (medioPago) filtro.medioPago = { $in: medioPago.split(',') };
 
   const gastos = await Gasto.find(filtro)
-    .populate('local', 'nombre marca')
+    .populate('local', 'nombre marca codigoExterno')
     .populate('usuario', 'nombre')
     .sort('-fecha');
 
@@ -139,7 +139,7 @@ router.get('/', async (req, res) => {
 
 router.get('/:id', async (req, res) => {
   const gasto = await Gasto.findById(req.params.id)
-    .populate('local', 'nombre marca')
+    .populate('local', 'nombre marca codigoExterno')
     .populate('usuario', 'nombre');
 
   if (!gasto) return res.status(404).json({ error: 'Gasto no encontrado' });
