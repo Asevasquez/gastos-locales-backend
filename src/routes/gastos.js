@@ -37,9 +37,12 @@ function mesActual() {
   return `${ahora.getFullYear()}-${String(ahora.getMonth() + 1).padStart(2, '0')}`;
 }
 
+// La fecha del gasto llega como día de calendario ("YYYY-MM-DD") y se guarda a medianoche
+// UTC, así que el mes se lee en UTC: con getMonth() local, un servidor que no esté en UTC
+// calcularía mal el mes de los gastos del día 1.
 function mesDeFecha(fecha) {
   const d = new Date(fecha);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
 }
 
 function tieneAccesoLocal(usuario, localId) {
