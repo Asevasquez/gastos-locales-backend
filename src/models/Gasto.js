@@ -34,6 +34,7 @@ const gastoSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+gastoSchema.index({ fecha: 1 });
 gastoSchema.index({ local: 1, mes: 1 });
 gastoSchema.index({ mes: 1, categoria: 1 });
 gastoSchema.index({ mes: 1, cuentaContable: 1 });

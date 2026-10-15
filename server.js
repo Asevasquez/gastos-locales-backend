@@ -10,6 +10,7 @@ const localesRoutes = require('./src/routes/locales');
 const catalogoRoutes = require('./src/routes/catalogo');
 const gastosRoutes = require('./src/routes/gastos');
 const estadisticasRoutes = require('./src/routes/estadisticas');
+const dashboardRoutes = require('./src/routes/dashboard');
 
 const app = express();
 
@@ -24,6 +25,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/usuarios', usuariosRoutes);
 app.use('/api/locales', localesRoutes);
 app.use('/api/catalogo', catalogoRoutes);
+app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/gastos/estadisticas', estadisticasRoutes); // antes de /api/gastos por especificidad de ruta
 app.use('/api/gastos', gastosRoutes);
 
