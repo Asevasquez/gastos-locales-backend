@@ -11,13 +11,22 @@ const catalogoRoutes = require('./src/routes/catalogo');
 const gastosRoutes = require('./src/routes/gastos');
 const estadisticasRoutes = require('./src/routes/estadisticas');
 const dashboardRoutes = require('./src/routes/dashboard');
+const historialGastosRoutes = require('./src/routes/historialGastos');
+const rellenarHistorial = require('./src/utils/rellenarHistorial');
 
 const app = express();
 
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
-conectarDB();
+// Al conectar, si el historial está vacío se crea el registro de "subido" de los gastos que ya existían
+// (solo ocurre la primera vez). Si falla no afecta al resto de la API.
+conectarDB()
+  .then(() => rellenarHistorial({ soloSiVacio: true }))
+  .then((r) => {
+    if (r && !r.omitido) console.log(`Historial inicial creado para ${r.creados} gastos`);
+  })
+  .catch((err) => console.error('No se pudo crear el historial inicial:', err.message));
 
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
@@ -26,6 +35,7 @@ app.use('/api/usuarios', usuariosRoutes);
 app.use('/api/locales', localesRoutes);
 app.use('/api/catalogo', catalogoRoutes);
 app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/historial-gastos', historialGastosRoutes);
 app.use('/api/gastos/estadisticas', estadisticasRoutes); // antes de /api/gastos por especificidad de ruta
 app.use('/api/gastos', gastosRoutes);
 

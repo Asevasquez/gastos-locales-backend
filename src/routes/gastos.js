@@ -2,11 +2,16 @@ const router = require('express').Router();
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const mongoose = require('mongoose');
 const Gasto = require('../models/Gasto');
+const Local = require('../models/Local');
+const HistorialGasto = require('../models/HistorialGasto');
 const ProductoCatalogo = require('../models/ProductoCatalogo');
 const auth = require('../middleware/auth');
 const checkRol = require('../middleware/checkRol');
 const { resolverFiltroLocal } = require('../utils/filtroLocal');
+const { hoyEnZona } = require('../utils/periodos');
+const { construirEvento, evaluarEliminacion, MOTIVO_ELIMINACION_MIN } = require('../utils/historialGastos');
 
 router.use(auth);
 
@@ -32,9 +37,10 @@ router.post('/foto', checkRol('MASTER', 'ADMINISTRADOR'), upload.single('foto'),
   res.json({ url: `${base}/uploads/boletas/${req.file.filename}` });
 });
 
+// Mes en curso según la zona horaria del negocio (America/Santiago), no la del servidor: así el
+// "mes cerrado" cambia a medianoche de Chile y no a las 21:00.
 function mesActual() {
-  const ahora = new Date();
-  return `${ahora.getFullYear()}-${String(ahora.getMonth() + 1).padStart(2, '0')}`;
+  return hoyEnZona().slice(0, 7);
 }
 
 // La fecha del gasto llega como día de calendario ("YYYY-MM-DD") y se guarda a medianoche
@@ -107,6 +113,23 @@ router.post('/', checkRol('MASTER', 'ADMINISTRADOR'), async (req, res) => {
       fotoBoletaUrl,
       motivo: motivo.trim()
     });
+
+    // Historial: queda registrado quién subió el gasto y cuándo. Si esto falla no se pierde el
+    // gasto (ya está guardado); `npm run historial:rellenar` repara los que se queden sin registro.
+    try {
+      const localDoc = await Local.findById(gasto.local).select('nombre').lean();
+      await HistorialGasto.create(
+        construirEvento({
+          accion: 'CREADO',
+          gasto,
+          localNombre: localDoc ? localDoc.nombre : null,
+          subidoPor: req.usuario,
+          realizadoPor: req.usuario
+        })
+      );
+    } catch (errHistorial) {
+      console.error(`No se pudo registrar en el historial el gasto ${gasto._id}:`, errHistorial.message);
+    }
 
     res.status(201).json(gasto);
   } catch (err) {
@@ -212,24 +235,47 @@ router.put('/:id', checkRol('MASTER', 'ADMINISTRADOR'), async (req, res) => {
   res.json(gasto);
 });
 
-// DELETE /api/gastos/:id — solo MASTER. Borra también el archivo de la foto en
-// disco (si existe); si falla al borrarlo (ya no está, permisos, etc.) igual
-// borra el registro del gasto, solo queda un warning en el log.
-router.delete('/:id', checkRol('MASTER'), async (req, res) => {
-  const gasto = await Gasto.findByIdAndDelete(req.params.id);
-  if (!gasto) return res.status(404).json({ error: 'Gasto no encontrado' });
+// DELETE /api/gastos/:id   (body: { motivo })
+//   MASTER: cualquier gasto.  ADMINISTRADOR: solo los que él subió, y solo durante el mes en que
+//   los subió.  Siempre exige un motivo y deja constancia en el historial ANTES de eliminar: si el
+//   registro falla, el gasto NO se elimina.  La foto de la boleta se conserva en disco a propósito,
+//   para que el historial pueda seguir mostrándola.
+router.delete('/:id', checkRol('MASTER', 'ADMINISTRADOR'), async (req, res) => {
+  try {
+    const motivo = String((req.body && req.body.motivo) || '').trim();
+    if (motivo.length < MOTIVO_ELIMINACION_MIN) {
+      return res.status(400).json({
+        error: `Debes indicar el motivo de la eliminación (mínimo ${MOTIVO_ELIMINACION_MIN} caracteres)`
+      });
+    }
 
-  if (gasto.fotoBoletaUrl) {
-    const nombreArchivo = gasto.fotoBoletaUrl.split('/').pop();
-    const rutaArchivo = path.join(uploadsDir, nombreArchivo);
-    fs.unlink(rutaArchivo, (err) => {
-      if (err && err.code !== 'ENOENT') {
-        console.error(`No se pudo borrar la foto del gasto ${gasto._id}:`, err.message);
-      }
-    });
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      return res.status(404).json({ error: 'Gasto no encontrado' });
+    }
+    const gasto = await Gasto.findById(req.params.id)
+      .populate('local', 'nombre')
+      .populate('usuario', 'nombre rol');
+    if (!gasto) return res.status(404).json({ error: 'Gasto no encontrado' });
+
+    const permiso = evaluarEliminacion(req.usuario, gasto);
+    if (!permiso.permitido) return res.status(403).json({ error: permiso.error });
+
+    await HistorialGasto.create(
+      construirEvento({
+        accion: 'ELIMINADO',
+        gasto,
+        subidoPor: gasto.usuario,
+        realizadoPor: req.usuario,
+        motivoEliminacion: motivo
+      })
+    );
+    await Gasto.deleteOne({ _id: gasto._id });
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Error al eliminar el gasto:', err);
+    res.status(500).json({ error: 'No se pudo eliminar el gasto' });
   }
-
-  res.json({ ok: true });
 });
 
 module.exports = router;
