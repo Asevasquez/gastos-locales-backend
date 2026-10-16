@@ -51,6 +51,10 @@ function mesDeFecha(fecha) {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
 }
 
+// Apps antiguas no mandan `claveUnica`. Para ellas, un gasto idéntico (mismo ítem, cantidad, monto,
+// fecha, medio de pago y motivo) que el mismo usuario subió hace menos de esto se rechaza como duplicado.
+const VENTANA_DUPLICADO_MINUTOS = 15;
+
 function tieneAccesoLocal(usuario, localId) {
   if (usuario.rol === 'MASTER') return true;
   return usuario.localesAsignados.some((id) => id.toString() === localId.toString());
@@ -60,8 +64,10 @@ function tieneAccesoLocal(usuario, localId) {
 // El ítem DEBE existir en el catálogo (productoCatalogoId): categoría y cuenta
 // contable se toman de ahí, nunca se reciben editadas desde el cliente.
 router.post('/', checkRol('MASTER', 'ADMINISTRADOR'), async (req, res) => {
+  let clave = null;
   try {
     const {
+      claveUnica,
       local,
       productoCatalogoId,
       cantidad,
@@ -92,6 +98,33 @@ router.post('/', checkRol('MASTER', 'ADMINISTRADOR'), async (req, res) => {
       return res.status(403).json({ error: 'No tienes acceso a este local' });
     }
 
+    // Anti-duplicados. Con clave: si ya existe un gasto con esa clave de este usuario, se devuelve ese
+    // mismo gasto (200) y no se crea otro: el reintento es inofensivo.
+    clave = typeof claveUnica === 'string' && claveUnica.trim() ? claveUnica.trim().slice(0, 100) : null;
+    if (clave) {
+      const existente = await Gasto.findOne({ usuario: req.usuario._id, claveUnica: clave });
+      if (existente) return res.status(200).json(existente);
+    } else {
+      const desde = new Date(Date.now() - VENTANA_DUPLICADO_MINUTOS * 60000);
+      const parecido = await Gasto.findOne({
+        usuario: req.usuario._id,
+        local,
+        productoCatalogoId,
+        cantidad,
+        unidadMedida,
+        monto,
+        medioPago,
+        fecha: new Date(fecha),
+        motivo: motivo.trim(),
+        createdAt: { $gte: desde }
+      });
+      if (parecido) {
+        return res.status(409).json({
+          error: `Ya registraste un gasto idéntico (mismo ítem, cantidad, monto, fecha y motivo) hace menos de ${VENTANA_DUPLICADO_MINUTOS} minutos. Si es otra compra distinta, cambia el motivo para distinguirla.`
+        });
+      }
+    }
+
     const producto = await ProductoCatalogo.findById(productoCatalogoId);
     if (!producto || !producto.activo) {
       return res.status(400).json({ error: 'El ítem seleccionado no existe o ya no está activo en el catálogo' });
@@ -111,7 +144,8 @@ router.post('/', checkRol('MASTER', 'ADMINISTRADOR'), async (req, res) => {
       fecha,
       mes: mesDeFecha(fecha),
       fotoBoletaUrl,
-      motivo: motivo.trim()
+      motivo: motivo.trim(),
+      claveUnica: clave || undefined
     });
 
     // Historial: queda registrado quién subió el gasto y cuándo. Si esto falla no se pierde el
@@ -133,6 +167,16 @@ router.post('/', checkRol('MASTER', 'ADMINISTRADOR'), async (req, res) => {
 
     res.status(201).json(gasto);
   } catch (err) {
+    // Dos envíos con la misma clave llegaron a la vez: el índice único dejó pasar solo uno. Al otro
+    // se le devuelve el gasto que sí se creó, en vez de un error.
+    if (err && err.code === 11000 && clave) {
+      try {
+        const existente = await Gasto.findOne({ usuario: req.usuario._id, claveUnica: clave });
+        if (existente) return res.status(200).json(existente);
+      } catch (errBusqueda) {
+        console.error('Error al buscar el gasto duplicado:', errBusqueda.message);
+      }
+    }
     res.status(500).json({ error: 'Error al crear el gasto' });
   }
 });
