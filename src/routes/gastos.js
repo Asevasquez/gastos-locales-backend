@@ -12,6 +12,7 @@ const checkRol = require('../middleware/checkRol');
 const { resolverFiltroLocal } = require('../utils/filtroLocal');
 const { hoyEnZona } = require('../utils/periodos');
 const { construirEvento, evaluarEliminacion, MOTIVO_ELIMINACION_MIN } = require('../utils/historialGastos');
+const { validarDocumento } = require('../utils/documentoGasto');
 
 router.use(auth);
 
@@ -178,6 +179,133 @@ router.post('/', checkRol('MASTER', 'ADMINISTRADOR'), async (req, res) => {
       }
     }
     res.status(500).json({ error: 'Error al crear el gasto' });
+  }
+});
+
+// POST /api/gastos/documento — una boleta o factura con UNO O MÁS productos.
+//   Body: { claveDocumento, local, folio, fecha, medioPago, fotoBoletaUrl, items: [{ productoCatalogoId,
+//   cantidad, unidadMedida, monto, motivo }], confirmarFolioRepetido? }
+// Cada producto se guarda como un gasto (con su categoría y cuenta contable del catálogo); todos comparten
+// folio, foto, fecha, medio de pago y `documentoId`.
+// Anti-duplicados: cada producto lleva la clave `${claveDocumento}:${posición}`. Si el documento llega otra
+// vez (doble toque, reintento de la cola offline, respuesta perdida), se devuelven los productos que ya
+// existen y solo se crean los que falten — por eso un fallo a la mitad se arregla reintentando.
+// Folio repetido: si OTRO documento del mismo local ya usó ese folio, se responde 409 (FOLIO_REPETIDO) a
+// menos que se confirme con `confirmarFolioRepetido: true` (puede ser un documento distinto de otro proveedor).
+router.post('/documento', checkRol('MASTER', 'ADMINISTRADOR'), async (req, res) => {
+  try {
+    const { error, datos } = validarDocumento(req.body);
+    if (error) return res.status(400).json({ error });
+
+    if (!tieneAccesoLocal(req.usuario, datos.local)) {
+      return res.status(403).json({ error: 'No tienes acceso a este local' });
+    }
+
+    const claves = datos.items.map((_, i) => `${datos.claveDocumento}:${i}`);
+    const existentes = await Gasto.find({ usuario: req.usuario._id, claveUnica: { $in: claves } });
+    const porClave = new Map(existentes.map((g) => [g.claveUnica, g]));
+
+    // Folio ya usado por otro documento de este local (no aplica a un reintento del mismo documento).
+    if (existentes.length === 0 && req.body.confirmarFolioRepetido !== true) {
+      const otro = await Gasto.findOne({
+        local: datos.local,
+        folioClave: datos.folioClave,
+        documentoId: { $ne: datos.claveDocumento }
+      }).populate('usuario', 'nombre');
+      if (otro) {
+        const quien = otro.usuario && otro.usuario.nombre ? ` por ${otro.usuario.nombre}` : '';
+        return res.status(409).json({
+          codigo: 'FOLIO_REPETIDO',
+          error: `Ya hay un documento con el folio ${datos.folio} en este local (ingresado el ${new Date(otro.createdAt || otro.fecha).toISOString().slice(0, 10).split('-').reverse().join('-')}${quien}). Si es un documento distinto, confírmalo para registrarlo igual.`,
+          existente: { fecha: otro.fecha, ingresadoEn: otro.createdAt, ingresadoPor: otro.usuario ? otro.usuario.nombre : null }
+        });
+      }
+    }
+
+    const ids = [...new Set(datos.items.map((it) => String(it.productoCatalogoId)))];
+    const productos = new Map((await ProductoCatalogo.find({ _id: { $in: ids } })).map((p) => [String(p._id), p]));
+    for (let i = 0; i < datos.items.length; i += 1) {
+      const p = productos.get(String(datos.items[i].productoCatalogoId));
+      if (!p || !p.activo) {
+        return res.status(400).json({ error: `Producto ${i + 1}: el ítem no existe o ya no está activo en el catálogo` });
+      }
+    }
+
+    const mes = mesDeFecha(datos.fecha);
+    const creados = [];
+    const gastos = [];
+    for (let i = 0; i < datos.items.length; i += 1) {
+      if (porClave.has(claves[i])) {
+        gastos.push(porClave.get(claves[i]));
+        continue;
+      }
+      const it = datos.items[i];
+      const producto = productos.get(String(it.productoCatalogoId));
+      try {
+        const gasto = await Gasto.create({
+          local: datos.local,
+          usuario: req.usuario._id,
+          productoNombre: producto.item,
+          productoCatalogoId: producto._id,
+          categoria: producto.ratio,
+          cuentaContable: producto.cuentaContable,
+          cantidad: it.cantidad,
+          unidadMedida: it.unidadMedida,
+          monto: it.monto,
+          medioPago: datos.medioPago,
+          fecha: datos.fecha,
+          mes,
+          fotoBoletaUrl: datos.fotoBoletaUrl,
+          motivo: it.motivo,
+          claveUnica: claves[i],
+          folio: datos.folio,
+          folioClave: datos.folioClave,
+          documentoId: datos.claveDocumento
+        });
+        creados.push(gasto);
+        gastos.push(gasto);
+      } catch (err) {
+        // Mismo producto enviado dos veces a la vez: el índice único dejó pasar solo uno; se usa el que sí se creó.
+        if (err && err.code === 11000) {
+          const ya = await Gasto.findOne({ usuario: req.usuario._id, claveUnica: claves[i] });
+          if (ya) {
+            gastos.push(ya);
+            continue;
+          }
+        }
+        throw err;
+      }
+    }
+
+    // Historial: un registro de "subido" por cada producto. Si falla no se pierde nada (ya está guardado).
+    if (creados.length > 0) {
+      try {
+        const localDoc = await Local.findById(datos.local).select('nombre').lean();
+        for (const gasto of creados) {
+          await HistorialGasto.create(
+            construirEvento({
+              accion: 'CREADO',
+              gasto,
+              localNombre: localDoc ? localDoc.nombre : null,
+              subidoPor: req.usuario,
+              realizadoPor: req.usuario
+            })
+          );
+        }
+      } catch (errHistorial) {
+        console.error(`No se pudo registrar en el historial el documento ${datos.claveDocumento}:`, errHistorial.message);
+      }
+    }
+
+    res.status(creados.length > 0 ? 201 : 200).json({
+      documentoId: datos.claveDocumento,
+      folio: datos.folio,
+      total: gastos.reduce((a, g) => a + g.monto, 0),
+      gastos
+    });
+  } catch (err) {
+    console.error('Error al crear el documento de gastos:', err);
+    res.status(500).json({ error: 'Error al crear el documento' });
   }
 });
 

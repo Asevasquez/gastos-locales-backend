@@ -38,6 +38,8 @@ const historialGastoSchema = new mongoose.Schema({
     mes: String,
     motivo: String,
     fotoBoletaUrl: String,
+    folio: { type: String, default: null },
+    documentoId: { type: String, default: null },
     subidoPor: {
       _id: false,
       usuario: { type: ObjectId, default: null },

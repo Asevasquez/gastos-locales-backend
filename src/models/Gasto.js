@@ -34,7 +34,14 @@ const gastoSchema = new mongoose.Schema(
     // Clave que genera la app al crear el gasto. Si la misma clave llega dos veces (doble toque,
     // reintento de la cola offline, respuesta perdida por un timeout), el servidor devuelve el gasto
     // ya creado en vez de duplicarlo. Es única por usuario; los gastos antiguos no la tienen.
-    claveUnica: { type: String, trim: true }
+    claveUnica: { type: String, trim: true },
+
+    // Documento (boleta o factura) al que pertenece este gasto. Un documento puede tener varios
+    // productos: cada producto es un gasto, y todos comparten folio, foto y `documentoId`.
+    // Los gastos antiguos (de un solo producto) no los tienen.
+    folio: { type: String, trim: true, default: null }, // tal como lo escribió el usuario
+    folioClave: { type: String, default: null }, // forma normalizada, para detectar folios repetidos
+    documentoId: { type: String, default: null } // identifica al documento (lo genera la app)
   },
   { timestamps: true }
 );
@@ -42,6 +49,8 @@ const gastoSchema = new mongoose.Schema(
 gastoSchema.index({ fecha: 1 });
 gastoSchema.index({ usuario: 1, claveUnica: 1 }, { unique: true, partialFilterExpression: { claveUnica: { $type: 'string' } } });
 gastoSchema.index({ local: 1, mes: 1 });
+gastoSchema.index({ local: 1, folioClave: 1 });
+gastoSchema.index({ documentoId: 1 });
 gastoSchema.index({ mes: 1, categoria: 1 });
 gastoSchema.index({ mes: 1, cuentaContable: 1 });
 

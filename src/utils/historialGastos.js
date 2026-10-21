@@ -38,6 +38,8 @@ function construirEvento({ accion, gasto, localNombre, subidoPor, realizadoPor, 
       mes: gasto.mes,
       motivo: gasto.motivo,
       fotoBoletaUrl: gasto.fotoBoletaUrl,
+      folio: gasto.folio || null,
+      documentoId: gasto.documentoId || null,
       subidoPor: {
         usuario: idDe(subidoPor) || idDe(gasto.usuario) || null,
         nombre: (subidoPor && subidoPor.nombre) || (gasto.usuario && gasto.usuario.nombre) || null
