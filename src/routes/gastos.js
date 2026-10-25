@@ -13,6 +13,7 @@ const { resolverFiltroLocal } = require('../utils/filtroLocal');
 const { hoyEnZona } = require('../utils/periodos');
 const { construirEvento, evaluarEliminacion, MOTIVO_ELIMINACION_MIN } = require('../utils/historialGastos');
 const { validarDocumento } = require('../utils/documentoGasto');
+const { siguienteNumero, numeroDeDocumento } = require('../utils/correlativo');
 
 router.use(auth);
 
@@ -131,6 +132,9 @@ router.post('/', checkRol('MASTER', 'ADMINISTRADOR'), async (req, res) => {
       return res.status(400).json({ error: 'El ítem seleccionado no existe o ya no está activo en el catálogo' });
     }
 
+    // Un gasto de un solo producto es un documento de una línea: recibe su propio número correlativo.
+    const numeroDocumento = await siguienteNumero();
+
     const gasto = await Gasto.create({
       local,
       usuario: req.usuario._id,
@@ -146,7 +150,8 @@ router.post('/', checkRol('MASTER', 'ADMINISTRADOR'), async (req, res) => {
       mes: mesDeFecha(fecha),
       fotoBoletaUrl,
       motivo: motivo.trim(),
-      claveUnica: clave || undefined
+      claveUnica: clave || undefined,
+      numeroDocumento
     });
 
     // Historial: queda registrado quién subió el gasto y cuándo. Si esto falla no se pierde el
@@ -231,6 +236,20 @@ router.post('/documento', checkRol('MASTER', 'ADMINISTRADOR'), async (req, res) 
       }
     }
 
+    // Número del documento: el mismo para todos sus productos. Si el documento ya tenía productos guardados
+    // (reintento), se reutiliza su número; si no, se asigna uno (estable aunque el envío llegue dos veces).
+    let numeroDocumento = existentes.map((g) => g.numeroDocumento).find((n) => Number.isInteger(n));
+    if (numeroDocumento === undefined) {
+      numeroDocumento = await numeroDeDocumento({ usuario: req.usuario._id, claveDocumento: datos.claveDocumento });
+      if (existentes.length > 0) {
+        // productos guardados antes de que existiera el correlativo: se les pone el mismo número
+        await Gasto.updateMany(
+          { usuario: req.usuario._id, documentoId: datos.claveDocumento, numeroDocumento: null },
+          { $set: { numeroDocumento } }
+        );
+      }
+    }
+
     const mes = mesDeFecha(datos.fecha);
     const creados = [];
     const gastos = [];
@@ -260,7 +279,8 @@ router.post('/documento', checkRol('MASTER', 'ADMINISTRADOR'), async (req, res) 
           claveUnica: claves[i],
           folio: datos.folio,
           folioClave: datos.folioClave,
-          documentoId: datos.claveDocumento
+          documentoId: datos.claveDocumento,
+          numeroDocumento
         });
         creados.push(gasto);
         gastos.push(gasto);
@@ -299,6 +319,7 @@ router.post('/documento', checkRol('MASTER', 'ADMINISTRADOR'), async (req, res) 
 
     res.status(creados.length > 0 ? 201 : 200).json({
       documentoId: datos.claveDocumento,
+      numeroDocumento,
       folio: datos.folio,
       total: gastos.reduce((a, g) => a + g.monto, 0),
       gastos

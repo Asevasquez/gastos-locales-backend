@@ -13,15 +13,25 @@ const estadisticasRoutes = require('./src/routes/estadisticas');
 const dashboardRoutes = require('./src/routes/dashboard');
 const historialGastosRoutes = require('./src/routes/historialGastos');
 const rellenarHistorial = require('./src/utils/rellenarHistorial');
+const { numerarGastosExistentes } = require('./src/utils/correlativo');
 
 const app = express();
 
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
-// Al conectar, si el historial está vacío se crea el registro de "subido" de los gastos que ya existían
-// (solo ocurre la primera vez). Si falla no afecta al resto de la API.
+// Al conectar:
+//  1. Se numera (correlativo de documento) lo que no tenga número: los gastos anteriores a esta función.
+//  2. Si el historial está vacío, se crea el registro de "subido" de los gastos que ya existían (solo la primera vez).
+// Cada paso es independiente: si uno falla, no afecta al resto de la API ni al otro paso.
 conectarDB()
+  .then(() =>
+    numerarGastosExistentes()
+      .then((r) => {
+        if (r.numerados > 0) console.log(`Correlativo asignado: ${r.numerados} gastos en ${r.documentos} documentos`);
+      })
+      .catch((err) => console.error('No se pudo asignar el correlativo:', err.message))
+  )
   .then(() => rellenarHistorial({ soloSiVacio: true }))
   .then((r) => {
     if (r && !r.omitido) console.log(`Historial inicial creado para ${r.creados} gastos`);

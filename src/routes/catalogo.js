@@ -34,6 +34,18 @@ router.get('/buscar', async (req, res) => {
   res.json(coincidencias);
 });
 
+// GET /api/catalogo/completo — todos los ítems activos. La app los guarda en el teléfono: así se puede
+// elegir un producto aunque falle la conexión con el servidor.
+router.get('/completo', async (req, res) => {
+  try {
+    const items = await ProductoCatalogo.find({ activo: true }).sort('item').select('item detalle ratio cuentaContable');
+    res.json(items);
+  } catch (err) {
+    console.error('Error en /catalogo/completo:', err);
+    res.status(500).json({ error: 'No se pudo cargar el catálogo' });
+  }
+});
+
 // GET /api/catalogo/categorias — valores de RATIO
 // Combina lo que trae el catálogo con lo que ya se haya usado en gastos, y un set
 // base para que nunca desaparezca una categoría por falta de datos.

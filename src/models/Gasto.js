@@ -41,7 +41,11 @@ const gastoSchema = new mongoose.Schema(
     // Los gastos antiguos (de un solo producto) no los tienen.
     folio: { type: String, trim: true, default: null }, // tal como lo escribió el usuario
     folioClave: { type: String, default: null }, // forma normalizada, para detectar folios repetidos
-    documentoId: { type: String, default: null } // identifica al documento (lo genera la app)
+    documentoId: { type: String, default: null }, // identifica al documento (lo genera la app)
+
+    // Correlativo del documento: un número por boleta o factura, compartido por todos sus productos. Es una
+    // sola secuencia para todo el sistema y no se reutiliza (si se elimina un gasto, su número queda sin usar).
+    numeroDocumento: { type: Number, default: null }
   },
   { timestamps: true }
 );
@@ -51,6 +55,7 @@ gastoSchema.index({ usuario: 1, claveUnica: 1 }, { unique: true, partialFilterEx
 gastoSchema.index({ local: 1, mes: 1 });
 gastoSchema.index({ local: 1, folioClave: 1 });
 gastoSchema.index({ documentoId: 1 });
+gastoSchema.index({ numeroDocumento: 1 });
 gastoSchema.index({ mes: 1, categoria: 1 });
 gastoSchema.index({ mes: 1, cuentaContable: 1 });
 

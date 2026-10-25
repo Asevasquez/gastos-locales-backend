@@ -39,6 +39,7 @@ function construirEvento({ accion, gasto, localNombre, subidoPor, realizadoPor, 
       motivo: gasto.motivo,
       fotoBoletaUrl: gasto.fotoBoletaUrl,
       folio: gasto.folio || null,
+      numeroDocumento: gasto.numeroDocumento == null ? null : gasto.numeroDocumento,
       documentoId: gasto.documentoId || null,
       subidoPor: {
         usuario: idDe(subidoPor) || idDe(gasto.usuario) || null,
