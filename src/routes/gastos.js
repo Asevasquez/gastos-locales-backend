@@ -24,16 +24,53 @@ router.use(auth);
 const uploadsDir = path.join(__dirname, '..', '..', 'uploads', 'boletas');
 fs.mkdirSync(uploadsDir, { recursive: true });
 
+// Solo imágenes. La extensión del archivo guardado sale del TIPO real que declara la subida, nunca del nombre que
+// trae (un "boleta.html" con tipo image/jpeg se guarda como .jpg), y estos archivos se sirven tal cual por /uploads.
+const TIPOS_FOTO = {
+  'image/jpeg': '.jpg',
+  'image/jpg': '.jpg',
+  'image/pjpeg': '.jpg',
+  'image/png': '.png',
+  'image/webp': '.webp'
+};
+const MAX_FOTO_MB = 8;
+
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, uploadsDir),
   filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname) || '.jpg';
-    cb(null, `${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`);
+    cb(null, `${Date.now()}-${Math.round(Math.random() * 1e9)}${TIPOS_FOTO[file.mimetype] || '.jpg'}`);
   }
 });
-const upload = multer({ storage, limits: { fileSize: 8 * 1024 * 1024 } }); // 8MB máx por boleta
+const upload = multer({
+  storage,
+  limits: { fileSize: MAX_FOTO_MB * 1024 * 1024 }, // 8MB máx por boleta
+  fileFilter: (req, file, cb) => {
+    if (TIPOS_FOTO[file.mimetype]) return cb(null, true);
+    const err = new Error('Formato de foto no permitido');
+    err.codigo = 'FORMATO_NO_PERMITIDO';
+    return cb(err);
+  }
+});
 
-router.post('/foto', checkRol('MASTER', 'ADMINISTRADOR'), upload.single('foto'), (req, res) => {
+// Recibe la foto y, si algo falla, responde un mensaje que se pueda mostrar (antes un archivo muy pesado terminaba
+// en un error 500 genérico).
+function recibirFoto(req, res, next) {
+  upload.single('foto')(req, res, (err) => {
+    if (!err) return next();
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      return res.status(413).json({ error: `La foto pesa más de ${MAX_FOTO_MB} MB. Usa una imagen más liviana.` });
+    }
+    if (err.code === 'LIMIT_UNEXPECTED_FILE') {
+      return res.status(400).json({ error: 'No se recibió ninguna foto' });
+    }
+    if (err.codigo === 'FORMATO_NO_PERMITIDO') {
+      return res.status(400).json({ error: 'Formato no permitido. Sube una imagen JPG, PNG o WEBP.' });
+    }
+    return next(err);
+  });
+}
+
+router.post('/foto', checkRol('MASTER', 'ADMINISTRADOR'), recibirFoto, (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No se recibió ninguna foto' });
   const base = process.env.PUBLIC_URL || `http://localhost:${process.env.PORT || 5001}`;
   res.json({ url: `${base}/uploads/boletas/${req.file.filename}` });

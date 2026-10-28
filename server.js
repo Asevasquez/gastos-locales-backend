@@ -38,7 +38,11 @@ conectarDB()
   })
   .catch((err) => console.error('No se pudo crear el historial inicial:', err.message));
 
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+// nosniff: el navegador no debe "adivinar" que un archivo subido es otra cosa que la imagen que declara ser.
+app.use(
+  '/uploads',
+  express.static(path.join(__dirname, 'uploads'), { setHeaders: (res) => res.setHeader('X-Content-Type-Options', 'nosniff') })
+);
 
 app.use('/api/auth', authRoutes);
 app.use('/api/usuarios', usuariosRoutes);
