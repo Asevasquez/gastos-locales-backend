@@ -9,7 +9,7 @@ const { calcularResumen, calcularLocales, calcularControl, UMBRALES } = require(
 router.use(auth);
 
 const CAMPOS =
-  'local fecha monto cantidad unidadMedida medioPago categoria cuentaContable productoNombre productoCatalogoId motivo editadoEn fotoBoletaUrl';
+  'local fecha monto cantidad unidadMedida medioPago categoria cuentaContable productoNombre productoCatalogoId motivo editadoEn fotoBoletaUrl fotosBoletaUrls';
 
 // Parámetros (todos opcionales): mes=YYYY-MM  ó  desde=YYYY-MM-DD&hasta=YYYY-MM-DD,
 // locales=id1,id2 (se intersecta SIEMPRE con los locales permitidos al usuario) y medioPago=A,B.

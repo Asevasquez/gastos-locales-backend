@@ -13,6 +13,7 @@ const { resolverFiltroLocal } = require('../utils/filtroLocal');
 const { hoyEnZona } = require('../utils/periodos');
 const { construirEvento, evaluarEliminacion, MOTIVO_ELIMINACION_MIN } = require('../utils/historialGastos');
 const { validarDocumento } = require('../utils/documentoGasto');
+const { MAX_FOTOS } = require('../utils/fotosBoleta');
 const { siguienteNumero, numeroDeDocumento } = require('../utils/correlativo');
 
 router.use(auth);
@@ -186,6 +187,7 @@ router.post('/', checkRol('MASTER', 'ADMINISTRADOR'), async (req, res) => {
       fecha,
       mes: mesDeFecha(fecha),
       fotoBoletaUrl,
+      fotosBoletaUrls: [fotoBoletaUrl],
       motivo: motivo.trim(),
       claveUnica: clave || undefined,
       numeroDocumento
@@ -225,7 +227,8 @@ router.post('/', checkRol('MASTER', 'ADMINISTRADOR'), async (req, res) => {
 });
 
 // POST /api/gastos/documento — una boleta o factura con UNO O MÁS productos.
-//   Body: { claveDocumento, local, folio, fecha, medioPago, fotoBoletaUrl, items: [{ productoCatalogoId,
+//   Body: { claveDocumento, local, folio, fecha, medioPago, fotosBoletaUrls (1 a 3; o `fotoBoletaUrl` de las apps
+//   antiguas), items: [{ productoCatalogoId,
 //   cantidad, unidadMedida, monto, motivo }], confirmarFolioRepetido? }
 // Cada producto se guarda como un gasto (con su categoría y cuenta contable del catálogo); todos comparten
 // folio, foto, fecha, medio de pago y `documentoId`.
@@ -312,6 +315,7 @@ router.post('/documento', checkRol('MASTER', 'ADMINISTRADOR'), async (req, res) 
           fecha: datos.fecha,
           mes,
           fotoBoletaUrl: datos.fotoBoletaUrl,
+          fotosBoletaUrls: datos.fotos,
           motivo: it.motivo,
           claveUnica: claves[i],
           folio: datos.folio,
@@ -457,6 +461,7 @@ router.put('/:id', checkRol('MASTER', 'ADMINISTRADOR'), async (req, res) => {
     fecha,
     mes: mesDeFecha(fecha),
     fotoBoletaUrl,
+    fotosBoletaUrls: [fotoBoletaUrl],
     motivo: motivo.trim(),
     editadoEn: new Date()
   });

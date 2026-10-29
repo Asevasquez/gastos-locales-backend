@@ -2,6 +2,7 @@
 // (objetos planos) y devuelven los números listos para mostrar. Así se pueden probar sin base de
 // datos, y las rutas solo se encargan de cargar los datos y filtrar por permisos.
 const { listarDias, diasEntre } = require('./periodos');
+const { fotosDe } = require('./fotosBoleta');
 
 const UMBRALES = {
   efectivoPct: 70, // % de efectivo desde el cual un local se marca como alerta
@@ -284,7 +285,8 @@ function calcularControl({ gastos, locales, periodo, hoyISO, ultimaPorLocal = {}
         monto: g.monto,
         veces: r1(veces),
         promedio: Math.round(ref.promedio),
-        fotoBoletaUrl: g.fotoBoletaUrl || null
+        fotoBoletaUrl: g.fotoBoletaUrl || null,
+        fotosBoletaUrls: fotosDe(g)
       });
     }
   }

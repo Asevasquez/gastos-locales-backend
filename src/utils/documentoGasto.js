@@ -1,5 +1,6 @@
 // Validación (pura) del cuerpo de POST /api/gastos/documento: una boleta o factura con uno o más productos.
 const { validarFolio } = require('./folio');
+const { normalizarFotos } = require('./fotosBoleta');
 
 const UNIDADES = ['KG', 'UN', 'LT', 'GR'];
 const MEDIOS_PAGO = ['EFECTIVO', 'TRANSFERENCIA', 'EFECTIVO_FLUJO'];
@@ -12,11 +13,14 @@ function numeroPositivo(valor) {
 
 // Devuelve { error } o { datos } con todo ya normalizado.
 function validarDocumento(body) {
-  const { claveDocumento, local, folio, fecha, medioPago, fotoBoletaUrl, items } = body || {};
+  const { claveDocumento, local, folio, fecha, medioPago, items } = body || {};
 
-  if (!local || !fecha || !medioPago || !fotoBoletaUrl) {
-    return { error: 'Faltan campos obligatorios (local, fecha, medio de pago y foto de la boleta)' };
+  if (!local || !fecha || !medioPago) {
+    return { error: 'Faltan campos obligatorios (local, fecha y medio de pago)' };
   }
+  // 1 a 3 fotos: la lista nueva (`fotosBoletaUrls`) o la foto única de las apps antiguas (`fotoBoletaUrl`)
+  const f0 = normalizarFotos(body || {});
+  if (f0.error) return { error: f0.error };
   if (typeof claveDocumento !== 'string' || !claveDocumento.trim()) {
     return { error: 'Falta la clave única del documento' };
   }
@@ -59,7 +63,8 @@ function validarDocumento(body) {
       folioClave: f.clave,
       fecha,
       medioPago,
-      fotoBoletaUrl,
+      fotos: f0.fotos,
+      fotoBoletaUrl: f0.fotos[0],
       items: normalizados
     }
   };

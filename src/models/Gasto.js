@@ -26,7 +26,11 @@ const gastoSchema = new mongoose.Schema(
     // de "solo editable dentro del mismo mes" sin lógica de fechas.
     mes: { type: String, required: true },
 
+    // Primera foto de la boleta (compatibilidad: la leen los gastos de antes, las apps sin actualizar y los reportes).
     fotoBoletaUrl: { type: String, required: true },
+    // Todas las fotos de la boleta (de 1 a 3, compartidas por los productos del documento). Los gastos antiguos
+    // no la tienen: se leen como una lista de una sola foto (utils/fotosBoleta.js → fotosDe).
+    fotosBoletaUrls: { type: [String], default: [], validate: [(v) => v.length <= 3, 'Una boleta puede tener hasta 3 fotos'] },
     motivo: { type: String, required: true, trim: true },
 
     editadoEn: { type: Date, default: null },

@@ -1,6 +1,7 @@
 // Funciones PURAS del historial de gastos y de los permisos para eliminar. No tocan la base de
 // datos, así se pueden probar sin MongoDB.
 const { hoyEnZona } = require('./periodos');
+const { fotosDe } = require('./fotosBoleta');
 
 const MOTIVO_ELIMINACION_MIN = 3;
 
@@ -38,6 +39,7 @@ function construirEvento({ accion, gasto, localNombre, subidoPor, realizadoPor, 
       mes: gasto.mes,
       motivo: gasto.motivo,
       fotoBoletaUrl: gasto.fotoBoletaUrl,
+      fotosBoletaUrls: fotosDe(gasto),
       folio: gasto.folio || null,
       numeroDocumento: gasto.numeroDocumento == null ? null : gasto.numeroDocumento,
       documentoId: gasto.documentoId || null,
