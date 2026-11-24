@@ -8,7 +8,7 @@ const usuarioSchema = new mongoose.Schema(
     passwordHash: { type: String, required: true },
     rol: {
       type: String,
-      enum: ['MASTER', 'ADMINISTRADOR', 'ANALISTA'],
+      enum: ['MASTER', 'ADMINISTRADOR', 'ANALISTA', 'GERENCIA'],
       required: true
     },
     // Locales que este usuario puede ver/operar. Many-to-many, igual que en KamiSushi Supervisión.

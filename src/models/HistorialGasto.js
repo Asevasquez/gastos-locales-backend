@@ -1,12 +1,13 @@
 const mongoose = require('mongoose');
 
-// Registro de auditoría: cada vez que se SUBE o se ELIMINA un gasto se guarda un evento aquí.
+// Registro de auditoría: cada vez que se SUBE, ELIMINA, APRUEBA, RECHAZA, CORRIGE (EDITADO) o REABRE la revisión de un gasto
+// se guarda un evento aquí.
 // Guarda una copia (snapshot) del gasto, porque cuando se elimina el gasto original ya no existe;
 // por lo mismo también se guardan los nombres (local, usuarios) tal como estaban en ese momento.
 const { ObjectId } = mongoose.Schema.Types;
 
 const historialGastoSchema = new mongoose.Schema({
-  accion: { type: String, enum: ['CREADO', 'ELIMINADO'], required: true },
+  accion: { type: String, enum: ['CREADO', 'ELIMINADO', 'APROBADO', 'RECHAZADO', 'EDITADO', 'REABIERTO'], required: true },
   fechaEvento: { type: Date, default: Date.now, required: true },
 
   gastoId: { type: ObjectId, required: true }, // el gasto puede ya no existir
@@ -23,6 +24,8 @@ const historialGastoSchema = new mongoose.Schema({
 
   // Solo en ELIMINADO
   motivoEliminacion: { type: String, default: null },
+  // En RECHAZADO (por qué se rechazó) y REABIERTO (por qué se reabrió, si se indicó)
+  motivoRevision: { type: String, default: null },
 
   gasto: {
     _id: false,

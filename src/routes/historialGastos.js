@@ -5,10 +5,10 @@ const { resolverFiltroLocal } = require('../utils/filtroLocal');
 
 router.use(auth);
 
-const ACCIONES = ['CREADO', 'ELIMINADO'];
+const ACCIONES = ['CREADO', 'ELIMINADO', 'APROBADO', 'RECHAZADO', 'EDITADO', 'REABIERTO'];
 
 // GET /api/historial-gastos
-//   accion=CREADO,ELIMINADO   desde / hasta (fecha-hora ISO, sobre la fecha del evento)
+//   accion=CREADO,ELIMINADO,APROBADO,RECHAZADO,EDITADO,REABIERTO   desde / hasta (fecha-hora ISO, sobre la fecha del evento)
 //   local=id | locales=id1,id2   medioPago=A,B   limite (por defecto 2000, máximo 5000)
 // Siempre se limita a los locales permitidos al usuario. Devuelve los eventos más recientes primero.
 router.get('/', async (req, res) => {

@@ -52,7 +52,8 @@ function validarDocumento(body) {
     if (!monto) return { error: `Producto ${n}: ingresa un monto válido` };
     const motivo = typeof it.motivo === 'string' ? it.motivo.trim() : '';
     if (!motivo) return { error: `Producto ${n}: ingresa el motivo del gasto` };
-    normalizados.push({ productoCatalogoId: it.productoCatalogoId, cantidad, unidadMedida: it.unidadMedida, monto, motivo });
+    // `gastoId` (solo al corregir una boleta): el producto ya existente al que corresponde esta línea
+    normalizados.push({ productoCatalogoId: it.productoCatalogoId, cantidad, unidadMedida: it.unidadMedida, monto, motivo, ...(it.gastoId ? { gastoId: String(it.gastoId) } : {}) });
   }
 
   return {

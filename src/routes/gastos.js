@@ -10,10 +10,11 @@ const ProductoCatalogo = require('../models/ProductoCatalogo');
 const auth = require('../middleware/auth');
 const checkRol = require('../middleware/checkRol');
 const { resolverFiltroLocal } = require('../utils/filtroLocal');
-const { hoyEnZona } = require('../utils/periodos');
 const { construirEvento, evaluarEliminacion, MOTIVO_ELIMINACION_MIN } = require('../utils/historialGastos');
 const { validarDocumento } = require('../utils/documentoGasto');
 const { MAX_FOTOS } = require('../utils/fotosBoleta');
+const { mesDeFecha, tieneAccesoLocal } = require('../utils/gastosComunes');
+const { ESTADOS, camposReenvio } = require('../utils/revisionGastos');
 const { siguienteNumero, numeroDeDocumento } = require('../utils/correlativo');
 
 router.use(auth);
@@ -77,28 +78,9 @@ router.post('/foto', checkRol('MASTER', 'ADMINISTRADOR'), recibirFoto, (req, res
   res.json({ url: `${base}/uploads/boletas/${req.file.filename}` });
 });
 
-// Mes en curso según la zona horaria del negocio (America/Santiago), no la del servidor: así el
-// "mes cerrado" cambia a medianoche de Chile y no a las 21:00.
-function mesActual() {
-  return hoyEnZona().slice(0, 7);
-}
-
-// La fecha del gasto llega como día de calendario ("YYYY-MM-DD") y se guarda a medianoche
-// UTC, así que el mes se lee en UTC: con getMonth() local, un servidor que no esté en UTC
-// calcularía mal el mes de los gastos del día 1.
-function mesDeFecha(fecha) {
-  const d = new Date(fecha);
-  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
-}
-
 // Apps antiguas no mandan `claveUnica`. Para ellas, un gasto idéntico (mismo ítem, cantidad, monto,
 // fecha, medio de pago y motivo) que el mismo usuario subió hace menos de esto se rechaza como duplicado.
 const VENTANA_DUPLICADO_MINUTOS = 15;
-
-function tieneAccesoLocal(usuario, localId) {
-  if (usuario.rol === 'MASTER') return true;
-  return usuario.localesAsignados.some((id) => id.toString() === localId.toString());
-}
 
 // POST /api/gastos — ADMINISTRADOR (sobre sus locales) o MASTER.
 // El ítem DEBE existir en el catálogo (productoCatalogoId): categoría y cuenta
@@ -255,7 +237,8 @@ router.post('/documento', checkRol('MASTER', 'ADMINISTRADOR'), async (req, res) 
       const otro = await Gasto.findOne({
         local: datos.local,
         folioClave: datos.folioClave,
-        documentoId: { $ne: datos.claveDocumento }
+        documentoId: { $ne: datos.claveDocumento },
+        estado: { $ne: 'RECHAZADO' } // un documento rechazado no "ocupa" su folio
       }).populate('usuario', 'nombre');
       if (otro) {
         const quien = otro.usuario && otro.usuario.nombre ? ` por ${otro.usuario.nombre}` : '';
@@ -374,7 +357,7 @@ router.post('/documento', checkRol('MASTER', 'ADMINISTRADOR'), async (req, res) 
 // GET /api/gastos?local=...&locales=id1,id2&mes=2026-09&desde=2026-09-15&hasta=2026-09-21&categoria=...&cuentaContable=...&medioPago=...
 // desde/hasta permiten filtrar por semana (o cualquier rango) además del filtro por mes.
 router.get('/', async (req, res) => {
-  const { local, locales, mes, desde, hasta, categoria, cuentaContable, medioPago } = req.query;
+  const { local, locales, mes, desde, hasta, categoria, cuentaContable, medioPago, estado } = req.query;
   const filtro = {};
 
   const filtroLocal = resolverFiltroLocal(req.usuario, { local, locales });
@@ -388,10 +371,12 @@ router.get('/', async (req, res) => {
   if (categoria) filtro.categoria = { $in: categoria.split(',') };
   if (cuentaContable) filtro.cuentaContable = { $in: cuentaContable.split(',') };
   if (medioPago) filtro.medioPago = { $in: medioPago.split(',') };
+  if (estado) filtro.estado = { $in: String(estado).split(',').filter((e) => ESTADOS.includes(e)) };
 
   const gastos = await Gasto.find(filtro)
     .populate('local', 'nombre marca codigoExterno')
     .populate('usuario', 'nombre')
+    .populate('revisadoPor', 'nombre')
     .sort('-fecha');
 
   res.json(gastos);
@@ -409,19 +394,15 @@ router.get('/:id', async (req, res) => {
   res.json(gasto);
 });
 
-// PUT /api/gastos/:id — ADMINISTRADOR solo puede editar sus propios gastos del mes en curso.
+// PUT /api/gastos/:id — edición de UN producto suelto: solo MASTER. Al guardar, el gasto vuelve a revisión (PENDIENTE).
+// Un ADMINISTRADOR no edita gastos por esta ruta: si una boleta fue rechazada, la corrige completa con
+// PUT /api/gastos/documento/:id (routes/revisionGastos.js), que la devuelve a revisión.
 router.put('/:id', checkRol('MASTER', 'ADMINISTRADOR'), async (req, res) => {
+  if (req.usuario.rol !== 'MASTER') {
+    return res.status(403).json({ error: 'Para corregir una boleta rechazada usa la opción "Corregir" de esa boleta' });
+  }
   const gasto = await Gasto.findById(req.params.id);
   if (!gasto) return res.status(404).json({ error: 'Gasto no encontrado' });
-
-  if (req.usuario.rol === 'ADMINISTRADOR') {
-    if (gasto.usuario.toString() !== req.usuario._id.toString()) {
-      return res.status(403).json({ error: 'Solo puedes editar tus propios gastos' });
-    }
-    if (gasto.mes !== mesActual()) {
-      return res.status(403).json({ error: 'Este gasto ya no se puede editar, el mes está cerrado' });
-    }
-  }
 
   const { productoCatalogoId, cantidad, unidadMedida, monto, medioPago, fecha, fotoBoletaUrl, motivo } = req.body;
 
@@ -463,7 +444,8 @@ router.put('/:id', checkRol('MASTER', 'ADMINISTRADOR'), async (req, res) => {
     fotoBoletaUrl,
     fotosBoletaUrls: [fotoBoletaUrl],
     motivo: motivo.trim(),
-    editadoEn: new Date()
+    editadoEn: new Date(),
+    ...(gasto.estado === 'PENDIENTE' ? {} : camposReenvio(gasto, new Date(), null)) // lo ya revisado vuelve a revisión
   });
 
   await gasto.save();

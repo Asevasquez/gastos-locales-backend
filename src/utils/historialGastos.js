@@ -13,7 +13,7 @@ function idDe(valor) {
 // Arma el documento del historial a partir de un gasto (plano o de Mongoose).
 //   gasto.local / gasto.usuario pueden venir como id o ya "populados" ({ _id, nombre }).
 //   subidoPor: quien subió el gasto originalmente.  realizadoPor: quien hizo esta acción.
-function construirEvento({ accion, gasto, localNombre, subidoPor, realizadoPor, motivoEliminacion, fechaEvento }) {
+function construirEvento({ accion, gasto, localNombre, subidoPor, realizadoPor, motivoEliminacion, motivoRevision, fechaEvento }) {
   return {
     accion,
     fechaEvento: fechaEvento || new Date(),
@@ -26,6 +26,7 @@ function construirEvento({ accion, gasto, localNombre, subidoPor, realizadoPor, 
       rol: (realizadoPor && realizadoPor.rol) || null
     },
     motivoEliminacion: accion === 'ELIMINADO' ? motivoEliminacion : null,
+    motivoRevision: accion === 'RECHAZADO' || accion === 'REABIERTO' ? motivoRevision || null : null,
     gasto: {
       productoNombre: gasto.productoNombre,
       productoCatalogoId: gasto.productoCatalogoId,
@@ -55,7 +56,8 @@ function construirEvento({ accion, gasto, localNombre, subidoPor, realizadoPor, 
 // ¿Puede este usuario eliminar este gasto?
 //   MASTER: siempre.
 //   ADMINISTRADOR: solo gastos que él subió, de locales que aún tiene asignados, y solo durante
-//   el mes (en la zona horaria del negocio) en que los subió.
+//   el mes (en la zona horaria del negocio) en que los subió. Un gasto APROBADO ya no lo puede eliminar:
+//   hay que pedírselo a un MASTER.
 //   Cualquier otro rol: no.
 function evaluarEliminacion(usuario, gasto, ahora = new Date()) {
   if (usuario.rol === 'MASTER') return { permitido: true };
@@ -70,6 +72,10 @@ function evaluarEliminacion(usuario, gasto, ahora = new Date()) {
   const localId = String(idDe(gasto.local));
   if (!(usuario.localesAsignados || []).some((id) => String(id) === localId)) {
     return { permitido: false, error: 'Ya no tienes acceso al local de este gasto' };
+  }
+
+  if (gasto.estado === 'APROBADO') {
+    return { permitido: false, error: 'Este gasto ya fue aprobado y no se puede eliminar. Si hay un error, pídele a un MASTER que lo elimine' };
   }
 
   const subido = gasto.createdAt || gasto.fecha;

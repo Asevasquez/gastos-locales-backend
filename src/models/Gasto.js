@@ -49,7 +49,26 @@ const gastoSchema = new mongoose.Schema(
 
     // Correlativo del documento: un número por boleta o factura, compartido por todos sus productos. Es una
     // sola secuencia para todo el sistema y no se reutiliza (si se elimina un gasto, su número queda sin usar).
-    numeroDocumento: { type: Number, default: null }
+    numeroDocumento: { type: Number, default: null },
+
+    // ----- Revisión (aprobar / rechazar) -----
+    // Todo gasto nuevo queda PENDIENTE hasta que un ANALISTA, GERENCIA o MASTER lo revise. La revisión se hace por
+    // boleta completa (todos sus productos juntos). Un gasto RECHAZADO lo corrige quien lo subió y vuelve a PENDIENTE.
+    estado: { type: String, enum: ['PENDIENTE', 'APROBADO', 'RECHAZADO'], default: 'PENDIENTE' },
+    revisadoPor: { type: mongoose.Schema.Types.ObjectId, ref: 'Usuario', default: null }, // null en los aprobados de antes de existir la revisión
+    revisadoEn: { type: Date, default: null },
+    motivoRechazo: { type: String, default: null }, // solo mientras está RECHAZADO
+    vecesRechazado: { type: Number, default: 0 },
+    reenviadoEn: { type: Date, default: null }, // cuándo se corrigió y volvió a revisión
+    // Lo último por lo que se rechazó, para que quien revisa de nuevo vea qué se pidió corregir.
+    rechazoAnterior: {
+      _id: false,
+      motivo: { type: String, default: null },
+      por: { type: String, default: null },
+      en: { type: Date, default: null }
+    },
+    // Clave de la última corrección aplicada: permite reintentar una corrección sin duplicar nada.
+    ultimaEdicion: { type: String, default: null }
   },
   { timestamps: true }
 );
@@ -60,6 +79,7 @@ gastoSchema.index({ local: 1, mes: 1 });
 gastoSchema.index({ local: 1, folioClave: 1 });
 gastoSchema.index({ documentoId: 1 });
 gastoSchema.index({ numeroDocumento: 1 });
+gastoSchema.index({ estado: 1, local: 1 });
 gastoSchema.index({ mes: 1, categoria: 1 });
 gastoSchema.index({ mes: 1, cuentaContable: 1 });
 

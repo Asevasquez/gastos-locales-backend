@@ -1,0 +1,1 @@
+const bcrypt = require('bcryptjs'); console.log(bcrypt.compareSync('master123','$2a$10$cz3lS2Nm/A6Tk0kAMn/QouU6TgEPtJZQfPEB2ePUVTrVQtXS0WMaa'));

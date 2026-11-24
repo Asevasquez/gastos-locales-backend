@@ -3,6 +3,7 @@ const Gasto = require('../models/Gasto');
 const Local = require('../models/Local');
 const auth = require('../middleware/auth');
 const { resolverFiltroLocal } = require('../utils/filtroLocal');
+const { SOLO_VIGENTES } = require('../utils/gastosComunes');
 
 router.use(auth);
 
@@ -26,7 +27,7 @@ function filtroBase(usuario, query) {
     filtro.mes = query.mes || mesActual();
   }
 
-  return filtro;
+  return { ...filtro, ...SOLO_VIGENTES }; // los gastos rechazados no suman
 }
 
 // GET /api/gastos/estadisticas/resumen?mes=2026-09&local=...&locales=id1,id2

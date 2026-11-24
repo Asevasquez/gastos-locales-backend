@@ -9,11 +9,13 @@ const usuariosRoutes = require('./src/routes/usuarios');
 const localesRoutes = require('./src/routes/locales');
 const catalogoRoutes = require('./src/routes/catalogo');
 const gastosRoutes = require('./src/routes/gastos');
+const revisionGastosRoutes = require('./src/routes/revisionGastos');
 const estadisticasRoutes = require('./src/routes/estadisticas');
 const dashboardRoutes = require('./src/routes/dashboard');
 const historialGastosRoutes = require('./src/routes/historialGastos');
 const rellenarHistorial = require('./src/utils/rellenarHistorial');
 const { numerarGastosExistentes } = require('./src/utils/correlativo');
+const { asignarEstadoInicial } = require('./src/utils/estadoInicial');
 
 const app = express();
 
@@ -22,7 +24,9 @@ app.use(express.json({ limit: '10mb' }));
 
 // Al conectar:
 //  1. Se numera (correlativo de documento) lo que no tenga número: los gastos anteriores a esta función.
-//  2. Si el historial está vacío, se crea el registro de "subido" de los gastos que ya existían (solo la primera vez).
+//  2. Los gastos anteriores a la revisión (aprobar / rechazar) reciben su estado: aprobados los de meses anteriores,
+//     pendientes los del mes en curso (ver REVISION_DESDE en utils/estadoInicial.js).
+//  3. Si el historial está vacío, se crea el registro de "subido" de los gastos que ya existían (solo la primera vez).
 // Cada paso es independiente: si uno falla, no afecta al resto de la API ni al otro paso.
 conectarDB()
   .then(() =>
@@ -31,6 +35,13 @@ conectarDB()
         if (r.numerados > 0) console.log(`Correlativo asignado: ${r.numerados} gastos en ${r.documentos} documentos`);
       })
       .catch((err) => console.error('No se pudo asignar el correlativo:', err.message))
+  )
+  .then(() =>
+    asignarEstadoInicial()
+      .then((r) => {
+        if (r.aprobados + r.pendientes > 0) console.log(`Estado inicial de revisión: ${r.aprobados} aprobados (anteriores a ${r.mes}), ${r.pendientes} pendientes`);
+      })
+      .catch((err) => console.error('No se pudo asignar el estado inicial de revisión:', err.message))
   )
   .then(() => rellenarHistorial({ soloSiVacio: true }))
   .then((r) => {
@@ -51,6 +62,7 @@ app.use('/api/catalogo', catalogoRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/historial-gastos', historialGastosRoutes);
 app.use('/api/gastos/estadisticas', estadisticasRoutes); // antes de /api/gastos por especificidad de ruta
+app.use('/api/gastos', revisionGastosRoutes); // revisión y corrección de boletas (rutas más específicas, antes que /:id)
 app.use('/api/gastos', gastosRoutes);
 
 app.get('/', (req, res) => res.send('API Gastos de Locales OK'));

@@ -3,6 +3,7 @@ const Gasto = require('../models/Gasto');
 const Local = require('../models/Local');
 const auth = require('../middleware/auth');
 const { resolverFiltroLocal } = require('../utils/filtroLocal');
+const { SOLO_VIGENTES } = require('../utils/gastosComunes');
 const { rangosPeriodo, hoyEnZona, restarDias } = require('../utils/periodos');
 const { calcularResumen, calcularLocales, calcularControl, UMBRALES } = require('../utils/dashboardCalculos');
 
@@ -32,6 +33,7 @@ async function cargarContexto(req) {
   };
   if (filtroLocal !== null) filtro.local = filtroLocal;
   if (medioPago) filtro.medioPago = { $in: String(medioPago).split(',') };
+  Object.assign(filtro, SOLO_VIGENTES); // los gastos rechazados no suman ni disparan alertas
 
   const gastos = await Gasto.find(filtro).select(CAMPOS).lean();
   return { hoyISO, periodo, filtroLocal, locales: docsLocales, gastos };
@@ -75,7 +77,7 @@ router.get('/locales', async (req, res) => {
   try {
     const ctx = await cargarContexto(req);
     const ultimas = await Gasto.aggregate([
-      { $match: ctx.filtroLocal !== null ? { local: ctx.filtroLocal } : {} },
+      { $match: { ...(ctx.filtroLocal !== null ? { local: ctx.filtroLocal } : {}), ...SOLO_VIGENTES } },
       { $group: { _id: '$local', ultima: { $max: '$fecha' } } }
     ]);
     const ultimaPorLocal = {};
@@ -90,7 +92,7 @@ router.get('/locales', async (req, res) => {
 router.get('/control', async (req, res) => {
   try {
     const ctx = await cargarContexto(req);
-    const matchLocal = ctx.filtroLocal !== null ? { local: ctx.filtroLocal } : {};
+    const matchLocal = { ...(ctx.filtroLocal !== null ? { local: ctx.filtroLocal } : {}), ...SOLO_VIGENTES };
 
     const ultimas = await Gasto.aggregate([
       { $match: matchLocal },
