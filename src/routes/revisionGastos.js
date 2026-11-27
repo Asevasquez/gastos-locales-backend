@@ -21,7 +21,7 @@ const { validarDocumento } = require('../utils/documentoGasto');
 const { construirEvento } = require('../utils/historialGastos');
 const { mesDeFecha, tieneAccesoLocal } = require('../utils/gastosComunes');
 const {
-  ESTADOS, MOTIVO_RECHAZO_MIN, MAX_DOCUMENTOS_POR_ACCION, claveDocumento, puedeRevisar, agruparDocumentos,
+  ESTADOS, MOTIVO_RECHAZO_MIN, MOTIVO_MAX, MAX_DOCUMENTOS_POR_ACCION, claveDocumento, puedeRevisar, agruparDocumentos,
   evaluarRevision, camposDecision, evaluarReapertura, camposReapertura, evaluarCorreccion, camposReenvio
 } = require('../utils/revisionGastos');
 
@@ -116,6 +116,7 @@ router.post('/revision', auth, async (req, res) => {
     if (decision === 'RECHAZAR' && motivoLimpio.length < MOTIVO_RECHAZO_MIN) {
       return res.status(400).json({ error: `Debes indicar el motivo del rechazo (mínimo ${MOTIVO_RECHAZO_MIN} caracteres), para que quien subió la boleta sepa qué corregir` });
     }
+    if (motivoLimpio.length > MOTIVO_MAX) return res.status(400).json({ error: `El motivo es demasiado largo (máximo ${MOTIVO_MAX} caracteres)` });
     const { ids, error } = idsDeBody(req.body);
     if (error) return res.status(400).json({ error });
 
@@ -158,7 +159,7 @@ router.post('/revision/reabrir', auth, async (req, res) => {
     if (!puedeRevisar(req.usuario)) return res.status(403).json({ error: 'No tienes permiso para reabrir la revisión de un gasto' });
     const { ids, error } = idsDeBody(req.body);
     if (error) return res.status(400).json({ error });
-    const motivo = String((req.body && req.body.motivo) || '').trim();
+    const motivo = String((req.body && req.body.motivo) || '').trim().slice(0, MOTIVO_MAX);
 
     const omitidos = [];
     let documentos = 0;

@@ -9,6 +9,7 @@ const { fotosDe } = require('./fotosBoleta');
 const ESTADOS = ['PENDIENTE', 'APROBADO', 'RECHAZADO'];
 const ROLES_REVISORES = ['MASTER', 'ANALISTA', 'GERENCIA'];
 const MOTIVO_RECHAZO_MIN = 5;
+const MOTIVO_MAX = 500; // el motivo puede combinar varias respuestas rápidas y un comentario
 const MAX_DOCUMENTOS_POR_ACCION = 200;
 
 const idDe = (v) => (v == null ? null : v._id !== undefined ? v._id : v);
@@ -178,7 +179,7 @@ function inicioDeMes(mes) {
 }
 
 module.exports = {
-  ESTADOS, ROLES_REVISORES, MOTIVO_RECHAZO_MIN, MAX_DOCUMENTOS_POR_ACCION,
+  ESTADOS, ROLES_REVISORES, MOTIVO_RECHAZO_MIN, MOTIVO_MAX, MAX_DOCUMENTOS_POR_ACCION,
   claveDocumento, puedeRevisar, tieneLocal, estadoDeDocumento, agruparDocumentos,
   evaluarRevision, camposDecision, evaluarReapertura, camposReapertura, evaluarCorreccion, camposReenvio, inicioDeMes
 };
